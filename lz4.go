@@ -14,19 +14,9 @@ import (
 )
 
 const (
-	// MaxInputSize is the max supported input size. see macro LZ4_MAX_INPUT_SIZE.
-	MaxInputSize = 0x7E000000 // 2 113 929 216 bytes
-
-	// if the streamingBlockSize is less than ~65K, then we need to keep
-	// previously decompressed blocks around at the same memory location
-	// that they were decompressed to.  This limits us to using a decompression
-	// buffer at least this size, so we might as well actually use this as
-	// the block size.
 	streamingBlockSize       = 1024 * 64
 	boudedStreamingBlockSize = streamingBlockSize + streamingBlockSize/255 + 16
 )
-
-var errShortRead = errors.New("short read")
 
 // p gets a char pointer to the first byte of a []byte slice
 func p(in []byte) *C.char {
@@ -58,16 +48,6 @@ func Uncompress(out, in []byte) (outSize int, err error) {
 //      ((unsigned int)(isize) > (unsigned int)LZ4_MAX_INPUT_SIZE ? 0 : (isize) + ((isize)/255) + 16)
 func CompressBound(in []byte) int {
 	return len(in) + ((len(in) / 255) + 16)
-}
-
-// CompressBoundInt returns the maximum size that LZ4 compression may output
-// in a "worst case" scenario (input data not compressible).
-// see macro LZ4_COMPRESSBOUND.
-func CompressBoundInt(inputSize int) int {
-	if inputSize <= 0 || inputSize > MaxInputSize {
-		return 0
-	}
-	return inputSize + inputSize/255 + 16
 }
 
 // Compress compresses in and puts the content in out. len(out)
