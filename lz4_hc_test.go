@@ -23,8 +23,12 @@ func TestCompressionHCRatio(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if want := 4317; want != outSize {
-		t.Fatalf("HC Compressed output length != expected: %d != %d", want, outSize)
+	// Should be at most 85% of the input size
+	maxSize := 85 * len(input) / 100
+
+	if outSize > maxSize {
+		t.Fatalf("HC Compressed output length should be at most 85%% of input size: input=%d, compressed=%d, maxExpected=%d",
+			len(input), outSize, maxSize)
 	}
 }
 
@@ -34,40 +38,22 @@ func TestCompressionHCLevels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cases := []struct {
-		Level   int
-		Outsize int
-	}{
-		{0, 4317},
-		{1, 4415},
-		{2, 4359},
-		{3, 4339},
-		{4, 4321},
-		{5, 4317},
-		{6, 4317},
-		{7, 4317},
-		{8, 4317},
-		{9, 4317},
-		{10, 4317},
-		{11, 4317},
-		{12, 4317},
-		{13, 4317},
-		{14, 4317},
-		{15, 4317},
-		{16, 4317},
-	}
+	// Should be at most 85% of the input size
+	previousCompressedSize := 85 * len(input) / 100
 
-	for _, tt := range cases {
+	// NOTE: lvl == 0 means auto, 1 worst, 16 best
+	for lvl := 1; lvl <= 16; lvl++ {
 		output := make([]byte, CompressBound(input))
-		outSize, err := CompressHCLevel(output, input, tt.Level)
+		outSize, err := CompressHCLevel(output, input, lvl)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if want := tt.Outsize; want != outSize {
-			t.Errorf("HC level %d length != expected: %d != %d",
-				tt.Level, want, outSize)
+		if outSize > previousCompressedSize {
+			t.Errorf("HC level %d should lead to a better or equal compression than HC level %d (previousSize=%d, currentSize=%d)",
+				lvl, lvl-1, previousCompressedSize, outSize)
 		}
+		previousCompressedSize = outSize
 	}
 }
 

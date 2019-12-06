@@ -18,8 +18,6 @@ import (
 	"testing/quick"
 )
 
-const corpusSize = 4746
-
 var plaintext0 = []byte("jkoedasdcnegzb.,ewqegmovobspjikodecedegds[]")
 
 func failOnError(t *testing.T, msg string, err error) {
@@ -40,8 +38,9 @@ func TestCompressionRatio(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if want := corpusSize; want != outSize {
-		t.Fatalf("Compressed output length != expected: %d != %d", outSize, want)
+	maxCompressedSize := 100 * len(input) / 85
+	if outSize >= maxCompressedSize {
+		t.Fatalf("Compressed output length %d should be smaller than %d", outSize, maxCompressedSize)
 	}
 }
 
