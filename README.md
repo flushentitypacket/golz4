@@ -1,7 +1,7 @@
 golz4
 =====
 
-[![Godoc](http://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/DataDog/golz4) [![license](http://img.shields.io/badge/license-BSD-red.svg?style=flat)](https://raw.githubusercontent.com/DataDog/golz4/master/LICENSE)
+[![Godoc](http://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/DataDog/golz4) [![license](http://img.shields.io/badge/license-BSD-red.svg?style=flat)](https://raw.githubusercontent.com/DataDog/golz4/master/LICENSE) [![CircleCI](https://circleci.com/gh/DataDog/golz4.svg?style=svg)](https://circleci.com/gh/DataDog/golz4)
 
 Golang interface to LZ4 compression.
 

@@ -1,0 +1,66 @@
+# Check https://circleci.com/docs/2.0/language-go/ for more details
+version: 2
+jobs:
+  test-lz4-stretch:
+    docker:
+      - image: circleci/golang:1.13-stretch
+
+    working_directory: /go/src/github.com/{{ORG_NAME}}/{{REPO_NAME}}
+    steps:
+      - run:
+          name: Install liblz4-dev package
+          command: |
+            sudo apt-get update -qy
+            sudo apt-get install -y --no-install-recommends liblz4-dev
+      - checkout
+      - run: go test -v ./...
+
+  test-lz4-source:
+    docker:
+      - image: circleci/golang:1.13-stretch
+
+    working_directory: /go/src/github.com/{{ORG_NAME}}/{{REPO_NAME}}
+
+    steps:
+      - run:
+          name: Build LZ4 from source
+          environment:
+            LZ4_VERSION: 1.9.2
+            LZ4_TARBALL_SHA256SUM: 658ba6191fa44c92280d4aa2c271b0f4fbc0e34d249578dd05e50e76d0e5efcc
+            _builddir: /tmp/build
+            _tmptgz: /tmp/liblz4.tgz
+          command: |
+            curl -L https://github.com/lz4/lz4/archive/v${LZ4_VERSION}.tar.gz -o ${_tmptgz}
+            echo "${LZ4_TARBALL_SHA256SUM} ${_tmptgz}" | sha256sum -c -
+            mkdir ${_builddir}
+            tar xzf /tmp/liblz4.tgz -C ${_builddir} --strip-components=1
+            make -C ${_builddir}
+            sudo make -C ${_builddir} install
+            rm -rf ${_tmptgz} ${_builddir}
+      - checkout
+      - run: go test -v ./...
+
+  lint:
+    docker:
+      - image: circleci/golang:1.13-stretch
+    working_directory: /go/src/github.com/{{ORG_NAME}}/{{REPO_NAME}}
+    steps:
+      - checkout
+      - run:
+          name: Check for files that need go fmt
+          command: |
+            needs_gofmt=$(gofmt -l -e .)
+            if test "${needs_gofmt}"
+            then
+              echo "The following files are not properly formatted. Run "go fmt" and commit those changes."
+              echo ${needs_gofmt}
+              exit 1
+            fi
+
+workflows:
+  version: 2
+  tests:
+    jobs:
+      - test-lz4-stretch
+      - test-lz4-source
+      - lint
