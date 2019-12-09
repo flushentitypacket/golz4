@@ -25,8 +25,13 @@ func TestCompressHdrRatio(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if want := corpusSize + 4; want != outSize {
-		t.Fatalf("Compressed output length != expected: %d != %d", outSize, want)
+	outputNoHdr := make([]byte, CompressBoundHdr(input))
+	outNoHdrSize, err := Compress(outputNoHdr, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outSize != outNoHdrSize+4 {
+		t.Fatalf("Compressed output length != expected: %d != %d", outSize, outNoHdrSize+4)
 	}
 }
 
