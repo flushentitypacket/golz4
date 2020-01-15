@@ -29,7 +29,7 @@ func CompressHCLevel(out, in []byte, level int) (outSize int, err error) {
 		return Compress(out, in)
 	}
 
-	outSize = int(C.LZ4_compressHC2_limitedOutput(p(in), p(out), clen(in), clen(out), C.int(level)))
+	outSize = int(C.LZ4_compress_HC(p(in), p(out), clen(in), clen(out), C.int(level)))
 	if outSize == 0 {
 		err = fmt.Errorf("insufficient space for compression")
 	}

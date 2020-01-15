@@ -1,5 +1,9 @@
 # golz4 CHANGELOG
 
+## v1.0.1
+
+Do not use deprecated LZ4 functions anymore. This removes the warnings that show up during compilation. The API or its behavior remains unchanged.
+
 ## v1.0.0
 
 While this release **does not break API compatibility**, it changes the way the library is built.
