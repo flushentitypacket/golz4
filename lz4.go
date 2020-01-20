@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	streamingBlockSize       = 1024 * 64
-	boudedStreamingBlockSize = streamingBlockSize + streamingBlockSize/255 + 16
+	streamingBlockSize        = 1024 * 64
+	boundedStreamingBlockSize = streamingBlockSize + streamingBlockSize/255 + 16
 )
 
 // p gets a char pointer to the first byte of a []byte slice
@@ -94,7 +94,7 @@ func (w *Writer) Write(src []byte) (int, error) {
 
 	inpPtr := w.compressionBuffer[w.inpBufIndex]
 
-	var compressedBuf [boudedStreamingBlockSize]byte
+	var compressedBuf [boundedStreamingBlockSize]byte
 	copy(inpPtr[:], src)
 
 	written := int(C.LZ4_compress_fast_continue(
@@ -158,8 +158,8 @@ func NewReader(r io.Reader) io.ReadCloser {
 		isLeft:           true,
 		// double buffer needs to use C.malloc to make sure the same memory address
 		// allocate buffers in go memory will fail randomly since GC may move the memory
-		left:  C.malloc(boudedStreamingBlockSize),
-		right: C.malloc(boudedStreamingBlockSize),
+		left:  C.malloc(boundedStreamingBlockSize),
+		right: C.malloc(boundedStreamingBlockSize),
 	}
 }
 
@@ -189,7 +189,7 @@ func (r *reader) Read(dst []byte) (int, error) {
 	}
 
 	// read blockSize from r.underlyingReader --> readBuffer
-	var uncompressedBuf [boudedStreamingBlockSize]byte
+	var uncompressedBuf [boundedStreamingBlockSize]byte
 	_, err = io.ReadFull(r.underlyingReader, uncompressedBuf[:blockSize])
 	if err != nil {
 		return 0, err
