@@ -8,6 +8,7 @@ package lz4
 import (
 	"bytes"
 	"crypto/rand"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -210,11 +211,14 @@ func TestFuzz(t *testing.T) {
 }
 
 func TestSimpleCompressDecompress(t *testing.T) {
-	data := []byte("this\nis\njust\na\ntestttttttttt.")
+	data := bytes.NewBuffer(nil)
+	for i := 0; i < 20; i++ {
+		data.WriteString(fmt.Sprintf("%02d-abcdefghijklmnopqrstuvwxyz ", i))
+	}
 	w := bytes.NewBuffer(nil)
 	wc := NewWriter(w)
 	defer wc.Close()
-	_, err := wc.Write(data)
+	_, err := wc.Write(data.Bytes())
 
 	// Decompress
 	bufOut := bytes.NewBuffer(nil)
@@ -222,7 +226,7 @@ func TestSimpleCompressDecompress(t *testing.T) {
 	_, err = io.Copy(bufOut, r)
 	failOnError(t, "Failed writing to file", err)
 
-	if bufOut.String() != string(data) {
+	if bufOut.String() != data.String() {
 		t.Fatalf("Decompressed output != input: %q != %q", bufOut.String(), data)
 	}
 }
