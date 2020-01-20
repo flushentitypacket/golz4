@@ -212,8 +212,9 @@ func TestFuzz(t *testing.T) {
 
 func TestSimpleCompressDecompress(t *testing.T) {
 	data := bytes.NewBuffer(nil)
-	for i := 0; i < 20; i++ {
-		data.WriteString(fmt.Sprintf("%02d-abcdefghijklmnopqrstuvwxyz ", i))
+	// NOTE: make the buffer bigger than 65k to cover all use cases
+	for i := 0; i < 2000; i++ {
+		data.WriteString(fmt.Sprintf("%04d-abcdefghijklmnopqrstuvwxyz ", i))
 	}
 	w := bytes.NewBuffer(nil)
 	wc := NewWriter(w)
