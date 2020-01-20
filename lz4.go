@@ -156,6 +156,12 @@ func NewReader(r io.Reader) io.ReadCloser {
 		lz4Stream:        C.LZ4_createStreamDecode(),
 		underlyingReader: r,
 		isLeft:           true,
+		// As per lz4 docs:
+		//
+		//   *_continue() :
+		//     These decoding functions allow decompression of multiple blocks in "streaming" mode.
+		//     Previously decoded blocks must still be available at the memory position where they were decoded.
+		//
 		// double buffer needs to use C.malloc to make sure the same memory address
 		// allocate buffers in go memory will fail randomly since GC may move the memory
 		left:  C.malloc(boundedStreamingBlockSize),
