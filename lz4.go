@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	streamingBlockSize       = 1024 * 64
-	boudedStreamingBlockSize = streamingBlockSize + streamingBlockSize/255 + 16
+	streamingBlockSize        = 1024 * 64
+	boundedStreamingBlockSize = streamingBlockSize + streamingBlockSize/255 + 16
 )
 
 // p gets a char pointer to the first byte of a []byte slice
@@ -29,6 +29,13 @@ func p(in []byte) *C.char {
 // clen gets the length of a []byte slice as a char *
 func clen(s []byte) C.int {
 	return C.int(len(s))
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // Uncompress with a known output size. len(out) should be equal to
@@ -87,7 +94,7 @@ func (w *Writer) Write(src []byte) (int, error) {
 
 	inpPtr := w.compressionBuffer[w.inpBufIndex]
 
-	var compressedBuf [boudedStreamingBlockSize]byte
+	var compressedBuf [boundedStreamingBlockSize]byte
 	copy(inpPtr[:], src)
 
 	written := int(C.LZ4_compress_fast_continue(
@@ -133,6 +140,7 @@ func (w *Writer) Close() error {
 // reader is an io.ReadCloser that decompresses when read from.
 type reader struct {
 	lz4Stream        *C.LZ4_streamDecode_t
+	pending          []byte
 	left             unsafe.Pointer
 	right            unsafe.Pointer
 	underlyingReader io.Reader
@@ -148,10 +156,16 @@ func NewReader(r io.Reader) io.ReadCloser {
 		lz4Stream:        C.LZ4_createStreamDecode(),
 		underlyingReader: r,
 		isLeft:           true,
+		// As per lz4 docs:
+		//
+		//   *_continue() :
+		//     These decoding functions allow decompression of multiple blocks in "streaming" mode.
+		//     Previously decoded blocks must still be available at the memory position where they were decoded.
+		//
 		// double buffer needs to use C.malloc to make sure the same memory address
 		// allocate buffers in go memory will fail randomly since GC may move the memory
-		left:  C.malloc(boudedStreamingBlockSize),
-		right: C.malloc(boudedStreamingBlockSize),
+		left:  C.malloc(boundedStreamingBlockSize),
+		right: C.malloc(boundedStreamingBlockSize),
 	}
 }
 
@@ -170,13 +184,18 @@ func (r *reader) Close() error {
 
 // Read decompresses `compressionBuffer` into `dst`.
 func (r *reader) Read(dst []byte) (int, error) {
+	// Write data read from a previous call
+	if r.pending != nil {
+		return r.readFromPending(dst)
+	}
+
 	blockSize, err := r.readSize(r.underlyingReader)
 	if err != nil {
 		return 0, err
 	}
 
 	// read blockSize from r.underlyingReader --> readBuffer
-	var uncompressedBuf [boudedStreamingBlockSize]byte
+	var uncompressedBuf [boundedStreamingBlockSize]byte
 	_, err = io.ReadFull(r.underlyingReader, uncompressedBuf[:blockSize])
 	if err != nil {
 		return 0, err
@@ -191,7 +210,7 @@ func (r *reader) Read(dst []byte) (int, error) {
 		r.isLeft = true
 	}
 
-	written := int(C.LZ4_decompress_safe_continue(
+	decompressed := int(C.LZ4_decompress_safe_continue(
 		r.lz4Stream,
 		(*C.char)(unsafe.Pointer(&uncompressedBuf[0])),
 		(*C.char)(ptr),
@@ -199,12 +218,20 @@ func (r *reader) Read(dst []byte) (int, error) {
 		C.int(streamingBlockSize),
 	))
 
-	if written < 0 {
-		return written, errors.New("error decompressing")
+	if decompressed < 0 {
+		return decompressed, errors.New("error decompressing")
 	}
 	// fmt.Println(hex.EncodeToString(ptr[:]))
-	mySlice := C.GoBytes(ptr, C.int(written))
-	copied := copy(dst[:written], mySlice)
+	mySlice := C.GoBytes(ptr, C.int(decompressed))
+	copySize := min(decompressed, len(dst))
+
+	copied := copy(dst, mySlice[:copySize])
+
+	if decompressed > len(dst) {
+		// Save data for future reads
+		r.pending = mySlice[copied:]
+	}
+
 	return copied, nil
 }
 
@@ -217,4 +244,16 @@ func (r *reader) readSize(rdr io.Reader) (int, error) {
 	}
 
 	return int(binary.LittleEndian.Uint32(temp[:])), nil
+}
+
+func (r *reader) readFromPending(dst []byte) (int, error) {
+	copySize := min(len(dst), len(r.pending))
+	copied := copy(dst, r.pending[:copySize])
+
+	if copied == len(r.pending) {
+		r.pending = nil
+	} else {
+		r.pending = r.pending[copied:]
+	}
+	return copied, nil
 }
