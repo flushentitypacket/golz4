@@ -1,5 +1,9 @@
 # golz4 CHANGELOG
 
+## v1.0.2
+
+* Fix panic with read when provided a buffer smaller than the decompressed data. The new version buffers the inflated data for later read calls when this happens. [PR 9](https://github.com/DataDog/golz4/pull/9)
+
 ## v1.0.1
 
 Do not use deprecated LZ4 functions anymore. This removes the warnings that show up during compilation. The API or its behavior remains unchanged.
