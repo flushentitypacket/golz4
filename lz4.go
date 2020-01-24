@@ -8,7 +8,6 @@ import "C"
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"unsafe"
 )
@@ -88,19 +87,35 @@ func NewWriter(w io.Writer) *Writer {
 
 // Write writes a compressed form of src to the underlying io.Writer.
 func (w *Writer) Write(src []byte) (int, error) {
-	if len(src) > streamingBlockSize+4 {
-		return 0, fmt.Errorf("block is too large: %d > %d", len(src), streamingBlockSize+4)
+	remainingBytes := len(src)
+	totalWritten := 0
+
+	for remainingBytes > 0 {
+		endIdx := totalWritten + streamingBlockSize
+		if endIdx > len(src) {
+			endIdx = len(src)
+		}
+		written, err := w.writeFrame(src[totalWritten:endIdx])
+		if err != nil {
+			return totalWritten, err
+		}
+		totalWritten += written
+		remainingBytes -= written
 	}
 
-	inpPtr := w.compressionBuffer[w.inpBufIndex]
+	return totalWritten, nil
+}
 
+func (w *Writer) writeFrame(src []byte) (int, error) {
 	var compressedBuf [boundedStreamingBlockSize]byte
-	copy(inpPtr[:], src)
+	inpPtr := w.nextInputBuffer()
+
+	copy(inpPtr, src)
 
 	written := int(C.LZ4_compress_fast_continue(
 		w.lz4Stream,
-		(*C.char)(unsafe.Pointer(&inpPtr[0])),
-		(*C.char)(unsafe.Pointer(&compressedBuf[0])),
+		p(inpPtr),
+		p(compressedBuf[:]),
 		C.int(len(src)),
 		C.int(len(compressedBuf)),
 		1))
@@ -122,9 +137,13 @@ func (w *Writer) Write(src []byte) (int, error) {
 		return 0, err
 	}
 
-	w.inpBufIndex = (w.inpBufIndex + 1) % 2
 	w.totalCompressedWritten += written + 4
 	return len(src), nil
+}
+
+func (w *Writer) nextInputBuffer() []byte {
+	w.inpBufIndex = (w.inpBufIndex + 1) % 2
+	return w.compressionBuffer[w.inpBufIndex][:]
 }
 
 // Close releases all the resources occupied by Writer.
@@ -184,6 +203,9 @@ func (r *reader) Close() error {
 
 // Read decompresses `compressionBuffer` into `dst`.
 func (r *reader) Read(dst []byte) (int, error) {
+	if len(dst) == 0 {
+		return 0, nil
+	}
 	// Write data read from a previous call
 	if r.pending != nil {
 		return r.readFromPending(dst)

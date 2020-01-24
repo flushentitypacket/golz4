@@ -213,13 +213,16 @@ func TestFuzz(t *testing.T) {
 func TestSimpleCompressDecompress(t *testing.T) {
 	data := bytes.NewBuffer(nil)
 	// NOTE: make the buffer bigger than 65k to cover all use cases
-	for i := 0; i < 2000; i++ {
+	for i := 0; i < 3000; i++ {
 		data.WriteString(fmt.Sprintf("%04d-abcdefghijklmnopqrstuvwxyz ", i))
 	}
 	w := bytes.NewBuffer(nil)
 	wc := NewWriter(w)
 	defer wc.Close()
 	_, err := wc.Write(data.Bytes())
+	if err != nil {
+		t.Fatalf("Compression of %d bytes of data failed: %s", len(data.Bytes()), err)
+	}
 
 	// Decompress
 	bufOut := bytes.NewBuffer(nil)
