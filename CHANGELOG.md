@@ -1,5 +1,10 @@
 # golz4 CHANGELOG
 
+## v1.0.3
+
+* Writer now supports any input size, not just blocks smaller than 65 KB. [PR 10](https://github.com/DataDog/golz4/pull/10)
+* Writer ensures the double buffer used for writing do not move in memory. [PR 11](https://github.com/DataDog/golz4/pull/11)
+
 ## v1.0.2
 
 * Fix panic with read when provided a buffer smaller than the decompressed data. The new version buffers the inflated data for later read calls when this happens. [PR 9](https://github.com/DataDog/golz4/pull/9)
