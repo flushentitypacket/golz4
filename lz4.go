@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"reflect"
 	"unsafe"
 )
 
@@ -69,7 +70,7 @@ func Compress(out, in []byte) (outSize int, err error) {
 
 // Writer is an io.WriteCloser that lz4 compress its input.
 type Writer struct {
-	compressionBuffer      [2][streamingBlockSize]byte
+	compressionBuffer      [2]unsafe.Pointer
 	lz4Stream              *C.LZ4_stream_t
 	underlyingWriter       io.Writer
 	inpBufIndex            int
@@ -80,6 +81,10 @@ type Writer struct {
 // the writer will be written in compressed form to w.
 func NewWriter(w io.Writer) *Writer {
 	return &Writer{
+		compressionBuffer: [2]unsafe.Pointer{
+			C.malloc(streamingBlockSize),
+			C.malloc(streamingBlockSize),
+		},
 		lz4Stream:        C.LZ4_createStream(),
 		underlyingWriter: w,
 	}
@@ -143,7 +148,12 @@ func (w *Writer) writeFrame(src []byte) (int, error) {
 
 func (w *Writer) nextInputBuffer() []byte {
 	w.inpBufIndex = (w.inpBufIndex + 1) % 2
-	return w.compressionBuffer[w.inpBufIndex][:]
+	tmpSlice := reflect.SliceHeader{
+		Data: uintptr(w.compressionBuffer[w.inpBufIndex]),
+		Len:  streamingBlockSize,
+		Cap:  streamingBlockSize,
+	}
+	return *(*[]byte)(unsafe.Pointer(&tmpSlice))
 }
 
 // Close releases all the resources occupied by Writer.
@@ -153,6 +163,8 @@ func (w *Writer) Close() error {
 		C.LZ4_freeStream(w.lz4Stream)
 		w.lz4Stream = nil
 	}
+	C.free(w.compressionBuffer[0])
+	C.free(w.compressionBuffer[1])
 	return nil
 }
 
