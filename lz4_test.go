@@ -22,6 +22,7 @@ import (
 var plaintext0 = []byte("jkoedasdcnegzb.,ewqegmovobspjikodecedegds[]")
 
 func failOnError(t *testing.T, msg string, err error) {
+	t.Helper()
 	if err != nil {
 		debug.PrintStack()
 		t.Fatalf("%s: %s", msg, err)
@@ -445,6 +446,55 @@ func TestStreamingFuzz(t *testing.T) {
 		n, err = r.Read(dst)
 		if err != io.EOF && len(dst) > 0 { // If we want 0 bytes, that should work
 			t.Fatalf("Error should have been EOF, was %s instead: (%v bytes read: %s)", err, n, dst[:n])
+		}
+		failOnError(t, "Failed to close decompress object", r.Close())
+		return true
+	}
+
+	conf := &quick.Config{MaxCount: 100}
+	if testing.Short() {
+		conf.MaxCount = 1000
+	}
+	if err := quick.Check(f, conf); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCompressReaderFuzz(t *testing.T) {
+	f := func(input []byte) bool {
+		inputBuf := bytes.NewBuffer(input)
+		cr := NewCompressReader(inputBuf)
+		w := bytes.NewBuffer(nil)
+		// fmt.Printf("input slice len: %d buf len: %d\n", len(input), inputBuf.Len())
+		_, err := io.Copy(w, cr)
+		failOnError(t, "Failed to compress and read data", err)
+
+		// Decompress
+		// fmt.Printf("compressed bytes %v\n", w.Bytes())
+		r := NewReader(w)
+		dst := bytes.NewBuffer(nil)
+		n, err := io.Copy(dst, r)
+		failOnError(t, "Failed Read", err)
+
+		// fmt.Printf("dst buffer %v bytes input buffer %v\n", dst.Bytes(), input)
+		if int(n) != len(input) {
+			t.Fatalf("Decompress result not equal to original input size: %d != %d", n, len(input))
+		}
+
+		if string(input) != dst.String() { // Only print if we can print
+			if len(input) < 100 && dst.Len() < 100 {
+				t.Fatalf("Cannot compress and decompress: %s != %s", string(input), dst.String())
+			} else {
+				t.Fatalf("Cannot compress and decompress (lengths: %v bytes & %v bytes)", len(input), dst.Len())
+			}
+		}
+		// Check EOF
+		nend, err := r.Read(make([]byte, streamingBlockSize))
+		if nend != 0 {
+			t.Fatalf("Error should have read 0 bytes, instead was: %d", nend)
+		}
+		if err != io.EOF { // If we want 0 bytes, that should work
+			t.Fatalf("Error should have been EOF, instead was: %s", err)
 		}
 		failOnError(t, "Failed to close decompress object", r.Close())
 		return true
