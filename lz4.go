@@ -311,7 +311,7 @@ type CompressReader struct {
 // read and compress data from r.  It is the caller's responsibility to call
 // Close on the ReadCloser when done.  If this is not done, underlying objects
 // in the lz4 library will not be freed.
-func NewCompressReader(r io.Reader) io.ReadCloser {
+func NewCompressReader(r io.Reader) *CompressReader {
 	return &CompressReader{
 		compressionBuffer: [2]unsafe.Pointer{
 			C.malloc(streamingBlockSize),
@@ -370,6 +370,8 @@ func (r *CompressReader) Read(dst []byte) (int, error) {
 	n, _ = r.outputBuffer.Read(dst)
 	// here we ignore any EOF because the buffer contains partial data only
 	// EOF will be communicated on the next call if the underlying Reader is exhausted
+
+	r.totalCompressedWritten += written + 4
 	return n, nil
 }
 
