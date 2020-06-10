@@ -604,6 +604,8 @@ func BenchmarkStreamUncompress(b *testing.B) {
 	}
 	r.Close()
 
+	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		r := NewReader(bytes.NewReader(compressedBuffer.Bytes()))
 		if _, err := io.Copy(ioutil.Discard, r); err != nil {
