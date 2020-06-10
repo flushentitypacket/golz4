@@ -6,6 +6,7 @@ package lz4
 import "C"
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -300,6 +301,7 @@ func (r *reader) readFromPending(dst []byte) (int, error) {
 type CompressReader struct {
 	underlyingReader       io.Reader
 	compressionBuffer      [2]unsafe.Pointer
+	outputBuffer           *bytes.Buffer
 	lz4Stream              *C.LZ4_stream_t
 	inpBufIndex            int
 	totalCompressedWritten int
@@ -317,10 +319,19 @@ func NewCompressReader(r io.Reader) io.ReadCloser {
 		},
 		lz4Stream:        C.LZ4_createStream(),
 		underlyingReader: r,
+		outputBuffer:     bytes.NewBuffer(nil),
 	}
 }
 
 func (r *CompressReader) Read(dst []byte) (int, error) {
+	// try to consume from the buffer
+	// If the buffer contains anything it's leftover from a previous call
+	n, err := r.outputBuffer.Read(dst)
+	if n > 0 {
+		return n, nil
+	}
+
+	// the buffer is empty, we are going to write into it so we reset it first
 	var compressedBuf [boundedStreamingBlockSize + blockHeaderSize]byte
 	inpPtr := r.nextInputBuffer()
 
@@ -354,14 +365,11 @@ func (r *CompressReader) Read(dst []byte) (int, error) {
 	// Write "header" to the buffer for decompression at the first 4 bytes
 	binary.LittleEndian.PutUint32(compressedBuf[:blockHeaderSize], uint32(written))
 
-	// Copy header + compressed data to our dst buffer
-	n := copy(dst, compressedBuf[:written+blockHeaderSize])
-	// fmt.Printf("copy() %d bytes: %v\n", n, dst)
-	if n != written+blockHeaderSize {
-		return 0, fmt.Errorf("dst buffer too small %d < %d", cap(dst), written)
-	}
-
-	r.totalCompressedWritten += written + 4
+	// populate the buffer with our internal slice and consume from it
+	r.outputBuffer = bytes.NewBuffer(compressedBuf[:written+blockHeaderSize])
+	n, _ = r.outputBuffer.Read(dst)
+	// here we ignore any EOF because the buffer contains partial data only
+	// EOF will be communicated on the next call if the underlying Reader is exhausted
 	return n, nil
 }
 

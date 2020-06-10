@@ -236,6 +236,37 @@ func TestSimpleCompressDecompress(t *testing.T) {
 	}
 }
 
+func TestSimpleCompressDecompressSmallBuffer(t *testing.T) {
+	var data strings.Builder
+	// NOTE: make the buffer bigger than 65k to cover all use cases
+	for i := 0; i < 3000; i++ {
+		data.WriteString(fmt.Sprintf("%04d-abcdefghijklmnopqrstuvwxyz ", i))
+	}
+
+	dataBuf := bytes.NewBufferString(data.String())
+
+	w := bytes.NewBuffer(nil)
+	lz4Reader := NewCompressReader(dataBuf)
+	defer lz4Reader.Close()
+
+	// use a small buffer on purpose to make sure the reader can accept a
+	// buffer smaller than an lz4 block size
+	_, err := io.CopyBuffer(w, lz4Reader, make([]byte, 512))
+	if err != nil {
+		t.Fatalf("Compression of %d bytes of data failed: %s", len(dataBuf.Bytes()), err)
+	}
+
+	// Decompress
+	bufOut := bytes.NewBuffer(nil)
+	r := NewReader(w)
+	_, err = io.Copy(bufOut, r)
+	failOnError(t, "Failed writing to file", err)
+
+	if bufOut.String() != data.String() {
+		t.Fatalf("Decompressed output != input: %q != %q", bufOut.String(), data.String())
+	}
+}
+
 func TestIOCopyStreamSimpleCompressionDecompression(t *testing.T) {
 	filename := "sample.txt"
 	inputs, _ := os.Open(filename)
