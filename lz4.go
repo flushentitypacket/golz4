@@ -301,7 +301,7 @@ func (r *reader) readFromPending(dst []byte) (int, error) {
 type CompressReader struct {
 	underlyingReader       io.Reader
 	compressionBuffer      [2]unsafe.Pointer
-	outputBuffer           *bytes.Buffer
+	outputBuffer           *bytes.Reader
 	lz4Stream              *C.LZ4_stream_t
 	inpBufIndex            int
 	totalCompressedWritten int
@@ -319,7 +319,7 @@ func NewCompressReader(r io.Reader) *CompressReader {
 		},
 		lz4Stream:        C.LZ4_createStream(),
 		underlyingReader: r,
-		outputBuffer:     bytes.NewBuffer(nil),
+		outputBuffer:     bytes.NewReader(nil),
 	}
 }
 
@@ -366,7 +366,7 @@ func (r *CompressReader) Read(dst []byte) (int, error) {
 	binary.LittleEndian.PutUint32(compressedBuf[:blockHeaderSize], uint32(written))
 
 	// populate the buffer with our internal slice and consume from it
-	r.outputBuffer = bytes.NewBuffer(compressedBuf[:written+blockHeaderSize])
+	r.outputBuffer = bytes.NewReader(compressedBuf[:written+blockHeaderSize])
 	n, _ = r.outputBuffer.Read(dst)
 	// here we ignore any EOF because the buffer contains partial data only
 	// EOF will be communicated on the next call if the underlying Reader is exhausted
