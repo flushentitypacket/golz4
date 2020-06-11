@@ -484,18 +484,15 @@ func TestCompressReaderFuzz(t *testing.T) {
 		inputBuf := bytes.NewBuffer(input)
 		cr := NewCompressReader(inputBuf)
 		w := bytes.NewBuffer(nil)
-		// fmt.Printf("input slice len: %d buf len: %d\n", len(input), inputBuf.Len())
 		_, err := io.Copy(w, cr)
 		failOnError(t, "Failed to compress and read data", err)
 
 		// Decompress
-		// fmt.Printf("compressed bytes %v\n", w.Bytes())
 		r := NewReader(w)
 		dst := bytes.NewBuffer(nil)
 		n, err := io.Copy(dst, r)
 		failOnError(t, "Failed Read", err)
 
-		// fmt.Printf("dst buffer %v bytes input buffer %v\n", dst.Bytes(), input)
 		if int(n) != len(input) {
 			t.Fatalf("Decompress result not equal to original input size: %d != %d", n, len(input))
 		}

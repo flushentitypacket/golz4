@@ -323,11 +323,13 @@ func NewCompressReader(r io.Reader) *CompressReader {
 	}
 }
 
+// Read compresses data from the underlyingReader into dst.
 func (r *CompressReader) Read(dst []byte) (int, error) {
 	// try to consume from the buffer
-	// If the buffer contains anything it's leftover from a previous call
-	n, err := r.outputBuffer.Read(dst)
+	n, _ := r.outputBuffer.Read(dst)
+	// ignoring err which can only be EOF in which case bytes read is 0
 	if n > 0 {
+		// if the buffer contains anything it's leftover from a previous call
 		return n, nil
 	}
 
@@ -344,7 +346,6 @@ func (r *CompressReader) Read(dst []byte) (int, error) {
 		// ErrUnexpectedEOF occurs when some bytes are read but not all the bytes (n > 0)
 		return 0, fmt.Errorf("error reading source: %s", err)
 	}
-	// fmt.Printf("ReadFull: read %d bytes\n", bytesRead)
 
 	// compress and write the data into compressedBuf, leaving space for the
 	// 4 byte header
@@ -359,10 +360,7 @@ func (r *CompressReader) Read(dst []byte) (int, error) {
 		return 0, errors.New("error compressing")
 	}
 
-	// fmt.Printf("wrote %d compressed bytes\n", written)
-	// fmt.Printf("compressedBuf %v\n", compressedBuf)
-
-	// Write "header" to the buffer for decompression at the first 4 bytes
+	// write "header" to the buffer for decompression at the first 4 bytes
 	binary.LittleEndian.PutUint32(compressedBuf[:blockHeaderSize], uint32(written))
 
 	// populate the buffer with our internal slice and consume from it
