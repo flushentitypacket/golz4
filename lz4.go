@@ -181,6 +181,8 @@ type reader struct {
 	isLeft           bool
 }
 
+
+// DEPRECATED: Use NewDecompressReader instead.
 // NewReader creates a new io.ReadCloser.  Reads from the returned ReadCloser
 // read and decompress data from r.  It is the caller's responsibility to call
 // Close on the ReadCloser when done.  If this is not done, underlying objects
@@ -405,8 +407,7 @@ type DecompressReader struct {
 }
 
 // NewDecompressReader creates a new io.ReadCloser. This function mirrors the
-// behavior of NewReader but provides better performance. Read from the
-// provided reader and passes decompressed data into the io.ReadCloser.
+// behavior of NewReader but provides better performance.
 // It is the caller's responsibility to call Close on the ReadCloser when done.
 // If this is not done, underlying objects in the lz4 library will not be freed.
 func NewDecompressReader(r io.Reader) io.ReadCloser {
@@ -424,27 +425,7 @@ func NewDecompressReader(r io.Reader) io.ReadCloser {
 	}
 }
 
-func (r *DecompressReader) nextDecompressionBuffer() []byte {
-	r.inpBufIndex = (r.inpBufIndex + 1) % 2
-	return ptrToByteSlice(r.decompressionBuffer[r.inpBufIndex], streamingBlockSize, streamingBlockSize)
-}
-
-// Close releases all the resources occupied by r.
-// r cannot be used after the release.
-func (r *DecompressReader) Close() error {
-	if r.lz4Stream != nil {
-		C.LZ4_freeStreamDecode(r.lz4Stream)
-		r.lz4Stream = nil
-	}
-
-	C.free(r.decompressionBuffer[0])
-	C.free(r.decompressionBuffer[1])
-	C.free(r.compressedBuffer)
-	return nil
-}
-
-// Read decompresses `compressionBuffer` into `dst`.
-// dst buffer must of at least streamingBlockSize bytes large
+// Read decompresses data from the underlying reader into `dst`.
 func (r *DecompressReader) Read(dst []byte) (int, error) {
 	// write data read from a previous call
 	n, _ := r.outputBuffer.Read(dst)
@@ -486,6 +467,25 @@ func (r *DecompressReader) Read(dst []byte) (int, error) {
 	n, _ = r.outputBuffer.Read(dst)
 
 	return n, nil
+}
+
+// Close releases all the resources occupied by r.
+// r cannot be used after the release.
+func (r *DecompressReader) Close() error {
+	if r.lz4Stream != nil {
+		C.LZ4_freeStreamDecode(r.lz4Stream)
+		r.lz4Stream = nil
+	}
+
+	C.free(r.decompressionBuffer[0])
+	C.free(r.decompressionBuffer[1])
+	C.free(r.compressedBuffer)
+	return nil
+}
+
+func (r *DecompressReader) nextDecompressionBuffer() []byte {
+	r.inpBufIndex = (r.inpBufIndex + 1) % 2
+	return ptrToByteSlice(r.decompressionBuffer[r.inpBufIndex], streamingBlockSize, streamingBlockSize)
 }
 
 // read the 4-byte little endian size from the head of each stream compressed block
