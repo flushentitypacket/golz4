@@ -516,16 +516,13 @@ func TestCompressReaderFuzz(t *testing.T) {
 		return true
 	}
 
-	input := bytes.NewBufferString("aaaaa").Bytes()
-	f(input)
-
-	// conf := &quick.Config{MaxCount: 100}
-	// if testing.Short() {
-	// 	conf.MaxCount = 1000
-	// }
-	// if err := quick.Check(f, conf); err != nil {
-	// 	t.Fatal(err)
-	// }
+	conf := &quick.Config{MaxCount: 100}
+	if testing.Short() {
+		conf.MaxCount = 1000
+	}
+	if err := quick.Check(f, conf); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func BenchmarkCompress(b *testing.B) {
@@ -608,6 +605,26 @@ func BenchmarkStreamUncompress(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		r := NewReader(bytes.NewReader(compressedBuffer.Bytes()))
+		if _, err := io.Copy(ioutil.Discard, r); err != nil {
+			b.Fatalf("Failed writing to compress object: %s", err)
+		}
+		b.SetBytes(10 * 1024 * 1024)
+		r.Close()
+	}
+}
+
+func BenchmarkStreamDecompressReader(b *testing.B) {
+	var compressedBuffer bytes.Buffer
+	r := NewCompressReader(io.LimitReader(Null, 10*1024*1024))
+	if _, err := io.Copy(&compressedBuffer, r); err != nil {
+		b.Fatalf("Failed writing to compress object: %s", err)
+	}
+	r.Close()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r := NewDecompressReader(bytes.NewReader(compressedBuffer.Bytes()))
 		if _, err := io.Copy(ioutil.Discard, r); err != nil {
 			b.Fatalf("Failed writing to compress object: %s", err)
 		}
