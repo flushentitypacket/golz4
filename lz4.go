@@ -394,3 +394,110 @@ func (r *CompressReader) Close() error {
 	C.free(r.compressionBuffer[1])
 	return nil
 }
+
+// DecompressReader is an io.ReadCloser that decompresses when read from.
+type DecompressReader struct {
+	lz4Stream           *C.LZ4_streamDecode_t
+	outputBuffer        *bytes.Reader
+	decompressionBuffer [2]unsafe.Pointer
+	underlyingReader    io.Reader
+	inpBufIndex         int
+}
+
+// NewDecompressReader creates a new io.ReadCloser. This function mirrors the
+// behavior of NewReader but provides better performance. Read from the
+// provided reader and passes decompressed data into the io.ReadCloser.
+// It is the caller's responsibility to call Close on the ReadCloser when done.
+// If this is not done, underlying objects in the lz4 library will not be freed.
+func NewDecompressReader(r io.Reader) io.ReadCloser {
+	return &DecompressReader{
+		lz4Stream:        C.LZ4_createStreamDecode(),
+		underlyingReader: r,
+		decompressionBuffer: [2]unsafe.Pointer{
+			// double buffer needs to use C.malloc to make sure the same memory address
+			// allocate buffers in go memory will fail randomly since GC may move the memory
+			C.malloc(streamingBlockSize),
+			C.malloc(streamingBlockSize),
+		},
+		outputBuffer: bytes.NewReader(nil),
+	}
+}
+
+func (r *DecompressReader) nextDecompressionBuffer() []byte {
+	r.inpBufIndex = (r.inpBufIndex + 1) % 2
+	tmpSlice := reflect.SliceHeader{
+		Data: uintptr(r.decompressionBuffer[r.inpBufIndex]),
+		Len:  streamingBlockSize,
+		Cap:  streamingBlockSize,
+	}
+	return *(*[]byte)(unsafe.Pointer(&tmpSlice))
+}
+
+// Close releases all the resources occupied by r.
+// r cannot be used after the release.
+func (r *DecompressReader) Close() error {
+	if r.lz4Stream != nil {
+		C.LZ4_freeStreamDecode(r.lz4Stream)
+		r.lz4Stream = nil
+	}
+
+	C.free(r.decompressionBuffer[0])
+	C.free(r.decompressionBuffer[1])
+	return nil
+}
+
+// Read decompresses `compressionBuffer` into `dst`.
+// dst buffer must of at least streamingBlockSize bytes large
+func (r *DecompressReader) Read(dst []byte) (int, error) {
+	// write data read from a previous call
+	n, _ := r.outputBuffer.Read(dst)
+	// ignoring err which can only be EOF in which case bytes read is 0
+	if n > 0 {
+		// if the buffer contains anything it's leftover from a previous call
+		return n, nil
+	}
+
+	blockSize, err := r.readSize(r.underlyingReader)
+	if err != nil {
+		return 0, err
+	}
+
+	// read the compressed blockSize from r.underlyingReader
+	var uncompressedBuf [boundedStreamingBlockSize]byte
+	_, err = io.ReadFull(r.underlyingReader, uncompressedBuf[:blockSize])
+	if err != nil {
+		return 0, err
+	}
+
+	ptr := r.nextDecompressionBuffer()
+
+	decompressed := int(C.LZ4_decompress_safe_continue(
+		r.lz4Stream,
+		p(uncompressedBuf[:]),
+		p(ptr),
+		C.int(blockSize),
+		C.int(streamingBlockSize),
+	))
+
+	if decompressed < 0 {
+		return decompressed, errors.New("error decompressing")
+	}
+
+	// write the decompressed data to the output buffer
+	r.outputBuffer = bytes.NewReader(uncompressedBuf[:decompressed])
+	// read as much as we can into dst, ignoring any EOF
+	n, _ = r.outputBuffer.Read(dst)
+
+	return n, nil
+}
+
+// read the 4-byte little endian size from the head of each stream compressed block
+func (r *DecompressReader) readSize(rdr io.Reader) (int, error) {
+	var temp [4]byte
+	_, err := io.ReadFull(rdr, temp[:])
+	if err != nil {
+		return 0, err
+	}
+
+	return int(binary.LittleEndian.Uint32(temp[:])), nil
+}
