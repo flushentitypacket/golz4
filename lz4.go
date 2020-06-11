@@ -181,7 +181,6 @@ type reader struct {
 	isLeft           bool
 }
 
-
 // DEPRECATED: Use NewDecompressReader instead.
 // NewReader creates a new io.ReadCloser.  Reads from the returned ReadCloser
 // read and decompress data from r.  It is the caller's responsibility to call
