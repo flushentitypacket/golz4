@@ -305,6 +305,7 @@ type CompressReader struct {
 	lz4Stream              *C.LZ4_stream_t
 	inpBufIndex            int
 	totalCompressedWritten int
+	compressedBuffer       []byte
 }
 
 // NewCompressReader creates a new io.ReadCloser.  Reads from the returned ReadCloser
@@ -312,6 +313,7 @@ type CompressReader struct {
 // Close on the ReadCloser when done.  If this is not done, underlying objects
 // in the lz4 library will not be freed.
 func NewCompressReader(r io.Reader) *CompressReader {
+	totalBlockSize := boundedStreamingBlockSize + blockHeaderSize
 	return &CompressReader{
 		compressionBuffer: [2]unsafe.Pointer{
 			C.malloc(streamingBlockSize),
@@ -320,6 +322,7 @@ func NewCompressReader(r io.Reader) *CompressReader {
 		lz4Stream:        C.LZ4_createStream(),
 		underlyingReader: r,
 		outputBuffer:     bytes.NewReader(nil),
+		compressedBuffer: make([]byte, totalBlockSize, totalBlockSize),
 	}
 }
 
@@ -334,7 +337,6 @@ func (r *CompressReader) Read(dst []byte) (int, error) {
 	}
 
 	// the buffer is empty, we are going to write into it so we reset it first
-	var compressedBuf [boundedStreamingBlockSize + blockHeaderSize]byte
 	inpPtr := r.nextInputBuffer()
 
 	bytesRead, err := io.ReadFull(r.underlyingReader, inpPtr)
@@ -352,19 +354,19 @@ func (r *CompressReader) Read(dst []byte) (int, error) {
 	written := int(C.LZ4_compress_fast_continue(
 		r.lz4Stream,
 		p(inpPtr),
-		p(compressedBuf[blockHeaderSize:]),
+		p(r.compressedBuffer[blockHeaderSize:]),
 		C.int(bytesRead),
-		C.int(len(compressedBuf)-blockHeaderSize),
+		C.int(boundedStreamingBlockSize),
 		1))
 	if written <= 0 {
 		return 0, errors.New("error compressing")
 	}
 
 	// write "header" to the buffer for decompression at the first 4 bytes
-	binary.LittleEndian.PutUint32(compressedBuf[:blockHeaderSize], uint32(written))
+	binary.LittleEndian.PutUint32(r.compressedBuffer[:blockHeaderSize], uint32(written))
 
 	// populate the buffer with our internal slice and consume from it
-	r.outputBuffer = bytes.NewReader(compressedBuf[:written+blockHeaderSize])
+	r.outputBuffer = bytes.NewReader(r.compressedBuffer[:written+blockHeaderSize])
 	n, _ = r.outputBuffer.Read(dst)
 	// here we ignore any EOF because the buffer contains partial data only
 	// EOF will be communicated on the next call if the underlying Reader is exhausted
@@ -402,6 +404,7 @@ type DecompressReader struct {
 	decompressionBuffer [2]unsafe.Pointer
 	underlyingReader    io.Reader
 	inpBufIndex         int
+	compressedBuffer    []byte
 }
 
 // NewDecompressReader creates a new io.ReadCloser. This function mirrors the
@@ -419,7 +422,8 @@ func NewDecompressReader(r io.Reader) io.ReadCloser {
 			C.malloc(streamingBlockSize),
 			C.malloc(streamingBlockSize),
 		},
-		outputBuffer: bytes.NewReader(nil),
+		outputBuffer:     bytes.NewReader(nil),
+		compressedBuffer: make([]byte, boundedStreamingBlockSize, boundedStreamingBlockSize),
 	}
 }
 
@@ -457,25 +461,23 @@ func (r *DecompressReader) Read(dst []byte) (int, error) {
 		return n, nil
 	}
 
-	blockSize, err := r.readSize(r.underlyingReader)
+	compressedBlockSize, err := r.readSize(r.underlyingReader)
 	if err != nil {
 		return 0, err
 	}
 
 	// read the compressed blockSize from r.underlyingReader
-	var uncompressedBuf [boundedStreamingBlockSize]byte
-	_, err = io.ReadFull(r.underlyingReader, uncompressedBuf[:blockSize])
+	_, err = io.ReadFull(r.underlyingReader, r.compressedBuffer[:compressedBlockSize])
 	if err != nil {
 		return 0, err
 	}
 
 	ptr := r.nextDecompressionBuffer()
-
 	decompressed := int(C.LZ4_decompress_safe_continue(
 		r.lz4Stream,
-		p(uncompressedBuf[:]),
+		p(r.compressedBuffer[:]),
 		p(ptr),
-		C.int(blockSize),
+		C.int(compressedBlockSize),
 		C.int(streamingBlockSize),
 	))
 
@@ -484,7 +486,7 @@ func (r *DecompressReader) Read(dst []byte) (int, error) {
 	}
 
 	// write the decompressed data to the output buffer
-	r.outputBuffer = bytes.NewReader(uncompressedBuf[:decompressed])
+	r.outputBuffer = bytes.NewReader(ptr[:decompressed])
 	// read as much as we can into dst, ignoring any EOF
 	n, _ = r.outputBuffer.Read(dst)
 
@@ -493,11 +495,10 @@ func (r *DecompressReader) Read(dst []byte) (int, error) {
 
 // read the 4-byte little endian size from the head of each stream compressed block
 func (r *DecompressReader) readSize(rdr io.Reader) (int, error) {
-	var temp [4]byte
+	var temp [blockHeaderSize]byte
 	_, err := io.ReadFull(rdr, temp[:])
 	if err != nil {
 		return 0, err
 	}
-
 	return int(binary.LittleEndian.Uint32(temp[:])), nil
 }
