@@ -19,6 +19,9 @@ const (
 	streamingBlockSize        = 1024 * 64
 	blockHeaderSize           = 4
 	boundedStreamingBlockSize = streamingBlockSize + streamingBlockSize/255 + 16
+
+	hugeStreamingBlockSize        = 1024 * 1024 * 5
+	boundedHugeStreamingBlockSize = hugeStreamingBlockSize + hugeStreamingBlockSize/255 + 16
 )
 
 // p gets a char pointer to the first byte of a []byte slice
@@ -316,13 +319,13 @@ type CompressReader struct {
 func NewCompressReader(r io.Reader) *CompressReader {
 	return &CompressReader{
 		compressionBuffer: [2]unsafe.Pointer{
-			C.malloc(streamingBlockSize),
-			C.malloc(streamingBlockSize),
+			C.malloc(hugeStreamingBlockSize),
+			C.malloc(hugeStreamingBlockSize),
 		},
 		lz4Stream:        C.LZ4_createStream(),
 		underlyingReader: r,
 		outputBuffer:     bytes.NewReader(nil),
-		compressedBuffer: C.malloc(boundedStreamingBlockSize + blockHeaderSize),
+		compressedBuffer: C.malloc(boundedHugeStreamingBlockSize + blockHeaderSize),
 	}
 }
 
@@ -337,7 +340,7 @@ func (r *CompressReader) Read(dst []byte) (int, error) {
 	}
 
 	// the buffer is empty, we are going to write into it so we reset it first
-	totalBlockSize := boundedStreamingBlockSize + blockHeaderSize
+	totalBlockSize := boundedHugeStreamingBlockSize + blockHeaderSize
 	inpPtr := r.nextInputBuffer()
 	outPtr := ptrToByteSlice(r.compressedBuffer, totalBlockSize, totalBlockSize)
 
@@ -358,7 +361,7 @@ func (r *CompressReader) Read(dst []byte) (int, error) {
 		p(inpPtr),
 		p(outPtr[blockHeaderSize:]),
 		C.int(bytesRead),
-		C.int(boundedStreamingBlockSize),
+		C.int(boundedHugeStreamingBlockSize),
 		1))
 	if written <= 0 {
 		return 0, errors.New("error compressing")
@@ -379,7 +382,7 @@ func (r *CompressReader) Read(dst []byte) (int, error) {
 
 func (r *CompressReader) nextInputBuffer() []byte {
 	r.inpBufIndex = (r.inpBufIndex + 1) % 2
-	return ptrToByteSlice(r.compressionBuffer[r.inpBufIndex], streamingBlockSize, streamingBlockSize)
+	return ptrToByteSlice(r.compressionBuffer[r.inpBufIndex], hugeStreamingBlockSize, hugeStreamingBlockSize)
 }
 
 // Close releases all the resources occupied by Reader.
@@ -416,11 +419,11 @@ func NewDecompressReader(r io.Reader) io.ReadCloser {
 		decompressionBuffer: [2]unsafe.Pointer{
 			// double buffer needs to use C.malloc to make sure the same memory address
 			// allocate buffers in go memory will fail randomly since GC may move the memory
-			C.malloc(streamingBlockSize),
-			C.malloc(streamingBlockSize),
+			C.malloc(hugeStreamingBlockSize),
+			C.malloc(hugeStreamingBlockSize),
 		},
 		outputBuffer:     bytes.NewReader(nil),
-		compressedBuffer: C.malloc(boundedStreamingBlockSize),
+		compressedBuffer: C.malloc(boundedHugeStreamingBlockSize),
 	}
 }
 
@@ -439,7 +442,7 @@ func (r *DecompressReader) Read(dst []byte) (int, error) {
 		return 0, err
 	}
 
-	inPtr := ptrToByteSlice(r.compressedBuffer, boundedStreamingBlockSize, boundedStreamingBlockSize)
+	inPtr := ptrToByteSlice(r.compressedBuffer, boundedHugeStreamingBlockSize, boundedHugeStreamingBlockSize)
 	outPtr := r.nextDecompressionBuffer()
 
 	// read the compressed blockSize from r.underlyingReader
@@ -453,7 +456,7 @@ func (r *DecompressReader) Read(dst []byte) (int, error) {
 		p(inPtr),
 		p(outPtr),
 		C.int(compressedBlockSize),
-		C.int(streamingBlockSize),
+		C.int(hugeStreamingBlockSize),
 	))
 
 	if decompressed < 0 {
@@ -484,7 +487,7 @@ func (r *DecompressReader) Close() error {
 
 func (r *DecompressReader) nextDecompressionBuffer() []byte {
 	r.inpBufIndex = (r.inpBufIndex + 1) % 2
-	return ptrToByteSlice(r.decompressionBuffer[r.inpBufIndex], streamingBlockSize, streamingBlockSize)
+	return ptrToByteSlice(r.decompressionBuffer[r.inpBufIndex], hugeStreamingBlockSize, hugeStreamingBlockSize)
 }
 
 // read the 4-byte little endian size from the head of each stream compressed block

@@ -246,7 +246,7 @@ func TestSimpleCompressDecompressSmallBuffer(t *testing.T) {
 	// Compress and Decompress
 	bufOut := bytes.NewBuffer(nil) // out buffer
 	// read -> compress -> decompress pipeline
-	_, err := io.Copy(bufOut, NewReader(NewCompressReader(dataBuf)))
+	_, err := io.Copy(bufOut, NewDecompressReader(NewCompressReader(dataBuf)))
 	failOnError(t, "Failed writing to file", err)
 
 	// assert we got out what we put it
@@ -505,7 +505,7 @@ func TestCompressReaderFuzz(t *testing.T) {
 			}
 		}
 		// Check EOF
-		nend, err := r.Read(make([]byte, streamingBlockSize))
+		nend, err := r.Read(make([]byte, hugeStreamingBlockSize))
 		if nend != 0 {
 			t.Fatalf("Error should have read 0 bytes, instead was: %d", nend)
 		}
