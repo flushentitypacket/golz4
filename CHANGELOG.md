@@ -1,5 +1,13 @@
 # golz4 CHANGELOG
 
+## v1.1.0
+
+* Introduces new Readers, CompressReader and DecompressReader
+* CompressReader provides an interface for passing an io.Reader for compression
+and returning an io.ReadCloser for reading the compressed data.
+* DecompressReader mirrors the functionality of the existing Reader but with
+2x performance and fewer allocs. Reader is now deprecated in favor of this new type.
+
 ## v1.0.3
 
 * Writer now supports any input size, not just blocks smaller than 65 KB. [PR 10](https://github.com/DataDog/golz4/pull/10)

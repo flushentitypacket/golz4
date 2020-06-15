@@ -10,12 +10,14 @@ Forked from `github.com/cloudflare/golz4` but with significant differences:
 * input/output arg order has been swapped to follow Go convention, ie `Compress(in, out)` -> `Compress(out, in)`
 * builds against the liblz4 that it detects using pkgconfig
 
-Benchmark 
+Benchmark
 ```
-BenchmarkCompress-8             	 5000000	       234 ns/op	 183.73 MB/s	       0 B/op	       0 allocs/op
-BenchmarkCompressUncompress-8   	20000000	        62.4 ns/op	 688.60 MB/s	       0 B/op	       0 allocs/op
-BenchmarkStreamCompress-8       	   50000	     32842 ns/op	2003.41 MB/s	  278537 B/op	       4 allocs/op
-BenchmarkStreamUncompress-8     	  500000	      2867 ns/op	22855.34 MB/s	      52 B/op	       2 allocs/op
+BenchmarkCompress-4                 	 4002601	       284 ns/op	 151.65 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCompressUncompress-4       	14668696	        75.6 ns/op	 568.66 MB/s	       0 B/op	       0 allocs/op
+BenchmarkStreamCompress-4           	     306	   4032676 ns/op	2600.20 MB/s	23627182 B/op	     643 allocs/op
+BenchmarkStreamCompressReader-4     	    1617	    700174 ns/op	14975.94 MB/s	    7856 B/op	     163 allocs/op
+BenchmarkStreamUncompress-4         	     100	  10385084 ns/op	1009.69 MB/s	22283872 B/op	     485 allocs/op
+BenchmarkStreamDecompressReader-4   	     236	   5060225 ns/op	2072.19 MB/s	    8557 B/op	     324 allocs/op`
 ```
 
 Building
