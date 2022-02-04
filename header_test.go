@@ -128,6 +128,31 @@ func TestCompressAllocHdr(t *testing.T) {
 	}
 }
 
+func TestUncompressAllocHdrWithZeroLengthHeader(t *testing.T) {
+	input := []byte("")
+	output := make([]byte, CompressBoundHdr(input))
+	outSize, err := CompressHdr(output, input)
+	if err != nil {
+		t.Fatalf("Compression failed: %v", err)
+	}
+	if outSize == 0 {
+		t.Fatal("Output buffer is empty.")
+	}
+	// This is the key line. Some lz4 implementations don't trim their compressed outputs for blank payloads,
+	// so we test that here
+	output = output[:outSize+1]
+	decompressed, err := UncompressAllocHdr(nil, output)
+	if err != nil {
+		t.Fatalf("Decompression failed: %v", err)
+	}
+	if len(decompressed) != 0 {
+		t.Fatalf("Decompressed length %d != 0", len(decompressed))
+	}
+	if string(decompressed) != string(input) {
+		t.Fatalf("Decompressed output != input: %q != %q", decompressed, input)
+	}
+}
+
 // test python interoperability
 
 // pymod returns whether or not a python module is importable.  For checking
