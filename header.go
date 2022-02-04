@@ -60,6 +60,9 @@ func UncompressAllocHdr(out, in []byte) ([]byte, error) {
 		return out, errTooShort
 	}
 	origlen := binary.LittleEndian.Uint32(in)
+	if origlen <= 0 {
+		return out, nil
+	}
 	if origlen > uint32(len(out)) {
 		out = make([]byte, origlen)
 	}
